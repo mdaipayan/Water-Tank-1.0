@@ -18,6 +18,7 @@ from reportlab.platypus import (
 from reportlab.platypus.flowables import Flowable
 
 from ..design.base import TankDesignResult
+from .mathrender import latex_flowable
 
 # ── Colour Palette ────────────────────────────────────────────────────────────
 IS_BLUE  = colors.HexColor("#004B7F")
@@ -140,6 +141,23 @@ def _make_page_cb(title_short: str, project_name: str):
 
 def _p(text, style): return Paragraph(str(text), style)
 def _sp(n=6):        return Spacer(1, n * mm)
+
+
+def _emit_formulas(story, formulas, ST, heading="Design calculations:"):
+    """Append worked LaTeX formulas (rendered as math images) to the story."""
+    if not formulas:
+        return
+    story.append(_p(heading, ST["h2"]))
+    for f in formulas:
+        lbl = f.get("label", "")
+        ref = f.get("ref", "")
+        if lbl:
+            story.append(_p(f"<b>{lbl}</b>" + (f" &mdash; <i>{ref}</i>" if ref else ""), ST["note"]))
+        flow = latex_flowable(f["latex"], max_w_mm=155, fontsize=10,
+                              fallback_style=ST["formula"])
+        if flow is not None:
+            story.append(KeepTogether([flow]))
+        story.append(_sp(2))
 
 
 # ── Main report builder ───────────────────────────────────────────────────────
@@ -286,6 +304,8 @@ def generate_pdf_report(
             t_comp.setStyle(_tbl_style(1))
             story.append(KeepTogether([t_comp, _sp(4)]))
 
+        _emit_formulas(story, getattr(comp, "formulas", None), ST)
+
     story.append(PageBreak())
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -301,19 +321,25 @@ def generate_pdf_report(
             "impulsive (mi) and convective (mc) liquid masses per IS 1893 Part 2.", ST["body"]))
         s_rows = [["Parameter", "Value"]]
         for k, v in seismic_result.items():
+            if k == "formulas":
+                continue
             s_rows.append([_lp(_pretty(k)[0], ST["td"]), _lp(_val_unit(k, v), ST["tdc"])])
         t_s = Table(s_rows, colWidths=[90*mm, 80*mm])
         t_s.setStyle(_tbl_style(1))
         story += [t_s, _sp(4)]
+        _emit_formulas(story, seismic_result.get("formulas"), ST)
 
     if wind_result:
         story.append(_p("4.2  Wind Force — IS 875 Part 3:2015", ST["h2"]))
         w_rows = [["Parameter", "Value"]]
         for k, v in wind_result.items():
+            if k == "formulas":
+                continue
             w_rows.append([_lp(_pretty(k)[0], ST["td"]), _lp(_val_unit(k, v), ST["tdc"])])
         t_w = Table(w_rows, colWidths=[90*mm, 80*mm])
         t_w.setStyle(_tbl_style(1))
         story += [t_w, _sp(4)]
+        _emit_formulas(story, wind_result.get("formulas"), ST)
 
     if foundation_result is not None:
         story.append(_p("4.3  Foundation & Global Stability — IS 456:2000", ST["h2"]))
@@ -332,6 +358,7 @@ def generate_pdf_report(
         t_f = Table(f_rows, colWidths=[90*mm, 80*mm])
         t_f.setStyle(_tbl_style(1))
         story += [t_f, _sp(4)]
+        _emit_formulas(story, getattr(foundation_result, "formulas", None), ST)
 
     story.append(PageBreak())
 

@@ -183,6 +183,38 @@ def design_foundation(
         "FoS_sliding": round(fos_sl, 2) if math.isfinite(fos_sl) else None,
         "uplift": uplift,
     }
+
+    def _n(x, p=2):
+        try:
+            return f"{int(x)}" if float(x) == int(x) else f"{x:.{p}f}"
+        except (TypeError, ValueError):
+            return str(x)
+
+    comp.step("Column axial incl. overturning",
+        rf"P_{{max}} = P + \frac{{2M_{{ot}}}}{{n R}} = {_n(P_col_service_kN,0)} + "
+        rf"\frac{{2\times{_n(M_ot_kNm,0)}}}{{{n_columns}\times{_n(R_col_m,1)}}} = {_n(P_max,0)}\;\mathrm{{kN}}")
+    comp.step("Required footing area",
+        rf"A = \frac{{1.1\,P_{{max}}}}{{q_{{a}}}} = \frac{{1.1\times{_n(P_max,0)}}}{{{_n(sbc_eff,0)}}} "
+        rf"\Rightarrow B = {_n(B_f,2)}\;\mathrm{{m\ sq}}", "IS 456 cl.34")
+    comp.step("Bearing pressure check",
+        rf"q = \frac{{1.1\,P_{{max}}}}{{B^{{2}}}} = {_n(q_gross_max,1)} \le q_a = {_n(sbc_eff,0)}\;\mathrm{{kN/m^2}}")
+    comp.step("Effective depth (punching shear)",
+        rf"\tau_v = \frac{{V}}{{b_0 d}} \le 0.16\sqrt{{f_{{ck}}}} = {_n(tau_p_perm,2)}\;\mathrm{{N/mm^2}} "
+        rf"\Rightarrow d = {int(d_prov_mm)}\;\mathrm{{mm}}", "IS 456 B-5")
+    comp.step("Flexural steel at column face",
+        rf"M = \tfrac{{q\,x^{{2}}}}{{2}} = {_n(M_ftg,1)}\;\mathrm{{kN\cdot m/m}},\quad "
+        rf"A_{{st}} = {_n(Ast,0)}\;\mathrm{{mm^2/m}}")
+    comp.step("Development length",
+        rf"L_d = \frac{{\phi\,\sigma_{{st}}}}{{4\,\tau_{{bd}}}} = {int(round(Ld))}\;\mathrm{{mm}}",
+        "IS 456 cl.26.2.1")
+    if math.isfinite(fos_ot):
+        comp.step("Stability — overturning",
+            rf"FoS = \frac{{W R}}{{M_{{ot}}}} = \frac{{{_n(W_total_kN,0)}\times{_n(R_col_m,1)}}}{{{_n(M_ot_kNm,0)}}} "
+            rf"= {_n(fos_ot,2)}\;(\ge {FOS_OVERTURN_MIN})")
+    if math.isfinite(fos_sl):
+        comp.step("Stability — sliding",
+            rf"FoS = \frac{{\mu W}}{{V}} = \frac{{{MU_FRICTION}\times{_n(W_total_kN,0)}}}{{{_n(V_lat_kN,0)}}} "
+            rf"= {_n(fos_sl,2)}\;(\ge {FOS_SLIDING_MIN})")
     return comp
 
 

@@ -6,7 +6,7 @@ from __future__ import annotations
 import math
 from .base import (CONCRETE, STEEL, GAMMA_W, GAMMA_RCC, COVER_WATER_FACE,
                    choose_bar, neutral_axis, lever_arm, min_ast,
-                   ast_from_moment, ast_from_tension,
+                   ast_from_moment, ast_from_tension, fnum,
                    ComponentResult, TankDesignResult)
 from .is3370_tables import get_ct_cm
 
@@ -107,6 +107,32 @@ def design_circular_tank(
     }
     if Ast_hoop_prov < Ast_hoop:
         comp.fail(f"Hoop steel deficient: prov={Ast_hoop_prov:.0f} < req={Ast_hoop:.0f} mm²/m")
+
+    # ── worked formulas ───────────────────────────────────────────────────────
+    _Ct, _Cm = max(ct), abs(cm[-1])
+    _k = neutral_axis(m, sigma_cbc, sigma_st); _j = lever_arm(_k)
+    comp.step("Trial wall thickness",
+        rf"t = \max\!\left(\tfrac{{H}}{{30}},\,0.20\right) = "
+        rf"\max\!\left(\tfrac{{{fnum(H_water)}}}{{30}},\,0.20\right) = {fnum(t_wall)}\;\mathrm{{m}}",
+        "IS 3370-2")
+    comp.step("Coefficient parameter",
+        rf"\frac{{H^{{2}}}}{{D\,t}} = \frac{{{fnum(H_water)}^{{2}}}}{{{fnum(D)}\times{fnum(t_wall)}}} = {fnum(param)}",
+        "IS 3370-4, Table 9-10")
+    comp.step("Max hoop tension",
+        rf"T = C_t\,\gamma_w H R = {fnum(_Ct,3)}\times{fnum(GAMMA_W)}\times{fnum(H_water)}\times{fnum(R)} "
+        rf"= {fnum(T_hoop_max,1)}\;\mathrm{{kN/m}}", "IS 3370-4")
+    comp.step("Base bending moment",
+        rf"M = C_m\,\gamma_w H^{{3}} = {fnum(_Cm,3)}\times{fnum(GAMMA_W)}\times{fnum(H_water)}^{{3}} "
+        rf"= {fnum(M_base,2)}\;\mathrm{{kN\cdot m/m}}", "IS 3370-4")
+    comp.step("Hoop steel (direct tension)",
+        rf"A_{{st}} = \frac{{T\times10^{{3}}}}{{\sigma_{{st}}}} = "
+        rf"\frac{{{fnum(T_hoop_max,1)}\times10^{{3}}}}{{{fnum(sigma_std)}}} = {fnum(Ast_hoop,0)}\;\mathrm{{mm^2/m}}",
+        "IS 3370-2, cl.7")
+    comp.step("Vertical steel (bending)",
+        rf"A_{{st}} = \frac{{M\times10^{{6}}}}{{\sigma_{{st}}\,j\,d}} = "
+        rf"\frac{{{fnum(M_base,2)}\times10^{{6}}}}{{{fnum(sigma_st)}\times{fnum(_j,3)}\times{fnum(d_wall,0)}}} "
+        rf"= {fnum(Ast_vert,0)}\;\mathrm{{mm^2/m}}", "WSM, IS 456 B-2")
+
     result.add(comp)
     result.reinforcement["wall"] = comp.details
 
@@ -151,6 +177,23 @@ def design_circular_tank(
         "top_ring_dia": top_ring_bar["dia"],
         "top_ring_spacing": top_ring_bar["spacing"],
     }
+    comp.step("Dome rise (assumed D/5)",
+        rf"r = \tfrac{{D}}{{5}} = \tfrac{{{fnum(D)}}}{{5}} = {fnum(rise_d)}\;\mathrm{{m}}")
+    comp.step("Radius of dome",
+        rf"R_d = \frac{{R^{{2}}+r^{{2}}}}{{2r}} = \frac{{{fnum(R)}^{{2}}+{fnum(rise_d)}^{{2}}}}{{2\times{fnum(rise_d)}}} "
+        rf"= {fnum(Rd)}\;\mathrm{{m}}")
+    comp.step("Semi-central angle",
+        rf"\theta = \sin^{{-1}}\!\tfrac{{R}}{{R_d}} = \sin^{{-1}}\tfrac{{{fnum(R)}}}{{{fnum(Rd)}}} "
+        rf"= {fnum(math.degrees(theta),1)}^{{\circ}}")
+    comp.step("Design load on dome",
+        rf"w_0 = \gamma_{{rcc}}t_d + LL = {fnum(GAMMA_RCC)}\times0.10 + 1.5 = {fnum(w0_dome)}\;\mathrm{{kN/m^2}}",
+        "IS 875")
+    comp.step("Meridional thrust",
+        rf"N_{{\phi}} = \frac{{w_0 R_d}}{{1+\cos\theta}} = "
+        rf"\frac{{{fnum(w0_dome)}\times{fnum(Rd)}}}{{1+{fnum(cos_th,3)}}} = {fnum(N_phi_dome,2)}\;\mathrm{{kN/m}}")
+    comp.step("Top ring-beam tension",
+        rf"T = N_{{\phi}}\cos\theta\,R = {fnum(N_phi_dome,2)}\times{fnum(cos_th,3)}\times{fnum(R)} "
+        rf"= {fnum(T_top_ring,1)}\;\mathrm{{kN}}")
     result.add(comp)
     result.reinforcement["top_dome"] = comp.details
 
@@ -178,6 +221,15 @@ def design_circular_tank(
         "bar_spacing_mm": floor_bar["spacing"],
         "Ast_prov": floor_bar["Ast_prov"],
     }
+    comp.step("Design pressure on floor",
+        rf"p = \gamma_w H + \gamma_{{rcc}}t = {fnum(GAMMA_W)}\times{fnum(H_water)} + {fnum(GAMMA_RCC)}\times0.25 "
+        rf"= {fnum(p_floor,2)}\;\mathrm{{kN/m^2}}")
+    comp.step("Max moment at centre (simply-supported plate)",
+        rf"M = \frac{{p R^{{2}}(3+\nu)}}{{16}} = \frac{{{fnum(p_floor,2)}\times{fnum(R)}^{{2}}\times(3+0.2)}}{{16}} "
+        rf"= {fnum(M_floor,2)}\;\mathrm{{kN\cdot m/m}}")
+    comp.step("Flexural steel",
+        rf"A_{{st}} = \frac{{M\times10^{{6}}}}{{\sigma_{{st}}\,j\,d}} = {fnum(Ast_floor,0)}\;\mathrm{{mm^2/m}}",
+        "WSM")
     result.add(comp)
     result.reinforcement["floor_slab"] = comp.details
 
@@ -210,6 +262,16 @@ def design_circular_tank(
         "bar_dia": brb_bar["dia"],
         "bar_spacing": brb_bar["spacing"],
     }
+    comp.step("Total superstructure load",
+        rf"W = W_{{water}}+W_{{wall}}+W_{{dome}}+W_{{floor}} = "
+        rf"{fnum(total_water_wt,0)}+{fnum(wall_wt,0)}+{fnum(dome_wt,0)}+{fnum(floor_wt,0)} "
+        rf"= {fnum(W_total_kN,0)}\;\mathrm{{kN}}")
+    comp.step("Moment in ring beam (n supports)",
+        rf"M = \frac{{W}}{{n}}\cdot\frac{{2\pi R/n}}{{8}} = {fnum(Mbrb,2)}\;\mathrm{{kN\cdot m}}",
+        "continuous circular beam")
+    comp.step("Main steel (incl. min. 0.24%)",
+        rf"A_{{st}} = \max\!\left(\frac{{M\times10^{{6}}}}{{\sigma_{{st}}\,j\,d}},\,0.24\%\,bd\right) "
+        rf"= {fnum(Ast_brb,0)}\;\mathrm{{mm^2}}", "IS 3370-2")
     result.add(comp)
     result.reinforcement["bottom_ring_beam"] = comp.details
 
@@ -246,6 +308,17 @@ def design_circular_tank(
         "n_long_bars": col_bars,
         "long_bar_dia": 16,
     }
+    comp.step("Axial load per column",
+        rf"P = \frac{{W}}{{n}} + 0.15W = \frac{{{fnum(W_total_kN,0)}}}{{{n_columns}}} + 0.15\times{fnum(W_total_kN,0)} "
+        rf"= {fnum(P_col,0)}\;\mathrm{{kN}}")
+    comp.step("Effective length",
+        rf"l_{{eff}} = 0.85\,l = 0.85\times{fnum(staging_height_m)} = {fnum(L_eff,2)}\;\mathrm{{m}}",
+        "IS 456 cl.25")
+    comp.step("Slenderness check",
+        rf"\frac{{l_{{eff}}}}{{D}} = \frac{{{fnum(L_eff,2)}}}{{{fnum(col_dia)}}} = {fnum(lambda_col,1)} \;(\le 60)")
+    comp.step("Longitudinal steel (min 1.2%)",
+        rf"A_{{sc}} = 0.012\,A_g = 0.012\times{fnum(Ag,0)} = {fnum(Ast_col,0)}\;\mathrm{{mm^2}}",
+        "IS 456 cl.26.5.3")
     result.add(comp)
     result.reinforcement["staging"] = comp.details
 

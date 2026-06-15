@@ -20,8 +20,46 @@ from src.design.rectangular_tank import design_rectangular_tank
 from src.design.seismic import seismic_forces, wind_forces
 from src.design.optimizer import rank_tank_types, auto_redesign_if_failed
 from src.design.foundation import foundation_from_result
-from src.report.pdf_report import generate_pdf_report
+from src.report.pdf_report import generate_pdf_report, _pretty as _rl_pretty
 from src.drawing.tank_drawings import dispatch_drawing, draw_bbs_chart
+
+
+# ── UI helpers: prettified labels (sub/superscripts) + worked formulas ────────
+def _ui_pretty(key):
+    lab, unit = _rl_pretty(key)
+    conv = lambda s: (s or "").replace("<super>", "<sup>").replace("</super>", "</sup>")
+    return conv(lab), conv(unit)
+
+
+def _ui_fmt(v):
+    if isinstance(v, bool):
+        return "Yes" if v else "No"
+    if isinstance(v, float):
+        return f"{v:.3f}" if abs(v) < 100 else f"{v:,.1f}"
+    return str(v)
+
+
+def _param_table_html(details):
+    rows = []
+    for k, v in details.items():
+        lab, unit = _ui_pretty(k)
+        val = f"{_ui_fmt(v)} {unit}" if unit else _ui_fmt(v)
+        rows.append(
+            f"<tr><td style='padding:3px 12px;border-bottom:1px solid #eef2f7'>{lab}</td>"
+            f"<td style='padding:3px 12px;border-bottom:1px solid #eef2f7;text-align:right;"
+            f"font-weight:600;color:#004B7F'>{val}</td></tr>")
+    return ("<table style='width:100%;border-collapse:collapse;font-size:0.86rem'>"
+            "<tr><th style='text-align:left;padding:5px 12px;background:#E8F1F8;color:#004B7F'>Parameter</th>"
+            "<th style='text-align:right;padding:5px 12px;background:#E8F1F8;color:#004B7F'>Value</th></tr>"
+            + "".join(rows) + "</table>")
+
+
+def _render_calc_formulas(formulas):
+    for fdef in (formulas or []):
+        if fdef.get("label"):
+            ref = f" &nbsp;·&nbsp; *{fdef['ref']}*" if fdef.get("ref") else ""
+            st.markdown(f"**{fdef['label']}**{ref}")
+        st.latex(fdef["latex"])
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Page config
@@ -483,13 +521,11 @@ with tab3:
                     st.warning(w)
 
             if comp.details:
-                # Build two-column detail table
-                items = list(comp.details.items())
-                df_comp = pd.DataFrame(
-                    [(k.replace("_", " ").title(), str(v)) for k, v in items],
-                    columns=["Parameter", "Value"]
-                )
-                st.dataframe(df_comp, use_container_width=True, hide_index=True)
+                st.markdown(_param_table_html(comp.details), unsafe_allow_html=True)
+
+            if getattr(comp, "formulas", None):
+                st.markdown("##### 📐 Worked design calculations")
+                _render_calc_formulas(comp.formulas)
 
     # Reinforcement summary
     st.markdown("#### 🔩 Reinforcement Provision Summary")
@@ -540,8 +576,12 @@ with tab4:
             s1.metric("Base Shear V_B", f"{seis['V_B_kN']:.1f} kN")
             s2.metric("OTM at base", f"{seis['M_ot_kNm']:.1f} kN·m")
             s3.metric("Zone Factor Z", seis["Z"])
-            df_seis = pd.DataFrame(list(seis.items()), columns=["Parameter", "Value"])
-            st.dataframe(df_seis, use_container_width=True, hide_index=True)
+            df_seis = pd.DataFrame(
+                [(_ui_pretty(k)[0], f"{_ui_fmt(v)} {_ui_pretty(k)[1] or ''}")
+                 for k, v in seis.items() if k != "formulas"],
+                columns=["Parameter", "Value"])
+            st.markdown(_param_table_html({k: v for k, v in seis.items() if k != "formulas"}),
+                        unsafe_allow_html=True)
 
             # Spectral chart
             T_arr = np.linspace(0.01, 4.0, 200)
@@ -575,6 +615,10 @@ with tab4:
             ax_sp.set_facecolor("#FAFAFA")
             st.pyplot(fig_sp, use_container_width=True)
             plt.close(fig_sp)
+
+            if seis.get("formulas"):
+                st.markdown("##### 📐 Worked calculations")
+                _render_calc_formulas(seis["formulas"])
         elif seis and "error" in seis:
             st.error(f"Seismic calculation error: {seis['error']}")
 
@@ -589,8 +633,8 @@ with tab4:
             w1, w2 = st.columns(2)
             w1.metric("Wind Base Shear", f"{wind['V_wind_kN']:.1f} kN")
             w2.metric("Wind OTM", f"{wind['M_wind_kNm']:.1f} kN·m")
-            df_wind = pd.DataFrame(list(wind.items()), columns=["Parameter", "Value"])
-            st.dataframe(df_wind, use_container_width=True, hide_index=True)
+            st.markdown(_param_table_html({k: v for k, v in wind.items() if k != "formulas"}),
+                        unsafe_allow_html=True)
 
             # Governing load
             if seis and "V_B_kN" in seis:
@@ -599,6 +643,10 @@ with tab4:
                 govern = "Seismic" if V_seis > V_wind else "Wind"
                 st.info(f"🏆 **Governing lateral load: {govern}** "
                         f"(Seismic V_B={V_seis:.1f} kN vs Wind V={V_wind:.1f} kN)")
+
+            if wind.get("formulas"):
+                st.markdown("##### 📐 Worked calculations")
+                _render_calc_formulas(wind["formulas"])
         elif wind and "error" in wind:
             st.error(f"Wind calculation error: {wind['error']}")
 
@@ -629,11 +677,11 @@ with tab4:
         if found.warnings:
             for w in found.warnings:
                 st.warning(w)
-        df_found = pd.DataFrame(
-            [(k.replace("_", " ").title(), str(v)) for k, v in fd.items()],
-            columns=["Parameter", "Value"])
         with st.expander("Footing reinforcement & full details"):
-            st.dataframe(df_found, use_container_width=True, hide_index=True)
+            st.markdown(_param_table_html(fd), unsafe_allow_html=True)
+        if getattr(found, "formulas", None):
+            st.markdown("##### 📐 Worked calculations")
+            _render_calc_formulas(found.formulas)
     else:
         st.info("Foundation results unavailable for this run.")
 

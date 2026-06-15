@@ -96,6 +96,38 @@ def seismic_forces(
     M_c = V_c * h_c
     M_ot = math.sqrt(M_i ** 2 + M_c ** 2)
 
+    def _n(x, p=2):
+        try:
+            return f"{int(x)}" if float(x) == int(x) else f"{x:.{p}f}"
+        except (TypeError, ValueError):
+            return str(x)
+
+    formulas = [
+        {"label": "Impulsive & convective masses",
+         "latex": rf"m_i = {_n(mi_m,3)}\,m = {_n(mi,1)}\;\mathrm{{t}},\quad "
+                  rf"m_c = {_n(mc_m,3)}\,m = {_n(mc,1)}\;\mathrm{{t}}",
+         "ref": "IS 1893-2, Table"},
+        {"label": "Impulsive time period",
+         "latex": rf"T_i = 2\pi\sqrt{{\tfrac{{m_i+m_s}}{{K_s}}}} = "
+                  rf"2\pi\sqrt{{\tfrac{{{_n(mi+ms,1)}}}{{{_n(K_s,0)}}}}} = {_n(T_i,3)}\;\mathrm{{s}}",
+         "ref": "IS 1893-2"},
+        {"label": "Convective time period",
+         "latex": rf"T_c = 2\pi\sqrt{{\tfrac{{D}}{{3.68\,g\,\tanh(3.68\,h/D)}}}} = {_n(T_c,3)}\;\mathrm{{s}}",
+         "ref": "IS 1893-2"},
+        {"label": "Design horizontal seismic coefficient",
+         "latex": rf"A_{{h,i}} = \frac{{Z\,I\,S_a/g}}{{2R}} = "
+                  rf"\frac{{{_n(Z,2)}\times{_n(I,1)}\times{_n(Sa_i_g,3)}}}{{2\times{_n(R,1)}}} = {_n(Ah_i,4)}",
+         "ref": "IS 1893-1 cl.6.4"},
+        {"label": "Impulsive base shear",
+         "latex": rf"V_i = A_{{h,i}}(m_i+m_s)g = {_n(Ah_i,4)}\times{_n(mi+ms,1)}\times9.81 = {_n(V_i,1)}\;\mathrm{{kN}}"},
+        {"label": "Convective base shear",
+         "latex": rf"V_c = A_{{h,c}}\,m_c\,g = {_n(Ah_c,4)}\times{_n(mc,1)}\times9.81 = {_n(V_c,1)}\;\mathrm{{kN}}"},
+        {"label": "Total base shear (SRSS)",
+         "latex": rf"V_B = \sqrt{{V_i^{{2}}+V_c^{{2}}}} = \sqrt{{{_n(V_i,1)}^{{2}}+{_n(V_c,1)}^{{2}}}} = {_n(V_B,1)}\;\mathrm{{kN}}"},
+        {"label": "Overturning moment (SRSS)",
+         "latex": rf"M = \sqrt{{M_i^{{2}}+M_c^{{2}}}} = {_n(M_ot,1)}\;\mathrm{{kN\cdot m}}"},
+    ]
+
     return {
         "zone": zone, "Z": Z, "I": I, "R": R,
         "h_D_ratio": round(h / L_char, 3),
@@ -109,6 +141,7 @@ def seismic_forces(
         "M_i_kNm": round(M_i, 1), "M_c_kNm": round(M_c, 1),
         "M_ot_kNm": round(M_ot, 1),
         "lateral_stiffness_kN_per_m": round(K_s, 1),
+        "formulas": formulas,
     }
 
 
@@ -193,8 +226,23 @@ def wind_forces(
     V_wind  = F_tank + F_stag
     M_wind  = F_tank * h_cg_tank + F_stag * h_cg_stag
 
+    formulas = [
+        {"label": "Design wind speed",
+         "latex": rf"V_z = V_b\,k_1 k_2 k_3 = {basic_wind_speed_m_s:.0f}\times{k1:.2f}\times{k2:.2f}\times{k3:.2f} "
+                  rf"= {Vz:.1f}\;\mathrm{{m/s}}", "ref": "IS 875-3 cl.6.3"},
+        {"label": "Design wind pressure",
+         "latex": rf"p_z = 0.6\,V_z^{{2}} = 0.6\times{Vz:.1f}^{{2}} = {pz*1000:.0f}\;\mathrm{{N/m^2}} "
+                  rf"= {pz:.3f}\;\mathrm{{kN/m^2}}", "ref": "IS 875-3 cl.7.2"},
+        {"label": "Wind force on tank",
+         "latex": rf"F = C_f A\,p_z = {Cf:.2f}\times{A_tank:.1f}\times{pz:.3f} = {F_tank:.1f}\;\mathrm{{kN}}"},
+        {"label": "Total base shear",
+         "latex": rf"V = F_{{tank}} + F_{{staging}} = {F_tank:.1f}+{F_stag:.1f} = {V_wind:.1f}\;\mathrm{{kN}}"},
+        {"label": "Overturning moment",
+         "latex": rf"M = F_{{tank}}h_{{t}} + F_{{stg}}h_{{s}} = {M_wind:.1f}\;\mathrm{{kN\cdot m}}"},
+    ]
     return {
         "Vz_m_s": round(Vz, 1), "pz_kN_m2": round(pz, 4),
         "F_tank_kN": round(F_tank, 2), "F_staging_kN": round(F_stag, 2),
         "V_wind_kN": round(V_wind, 2), "M_wind_kNm": round(M_wind, 2),
+        "formulas": formulas,
     }

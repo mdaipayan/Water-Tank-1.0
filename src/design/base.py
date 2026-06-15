@@ -153,12 +153,23 @@ def ast_from_tension(T_kN_per_m: float, sigma_st_direct: float) -> float:
 # ──────────────────────────────────────────────────────────────────────────────
 # Result dataclass shared across all tank types
 # ──────────────────────────────────────────────────────────────────────────────
+def fnum(x, p: int = 2) -> str:
+    """Format a number for inclusion in a LaTeX expression (no thousands sep)."""
+    try:
+        if float(x) == int(x):
+            return f"{int(x)}"
+        return f"{x:.{p}f}"
+    except (TypeError, ValueError):
+        return str(x)
+
+
 @dataclass
 class ComponentResult:
     name: str
     ok: bool = True
     warnings: List[str] = field(default_factory=list)
     details: Dict = field(default_factory=dict)
+    formulas: List[Dict] = field(default_factory=list)   # worked LaTeX steps
 
     def fail(self, msg: str):
         self.ok = False
@@ -166,6 +177,10 @@ class ComponentResult:
 
     def warn(self, msg: str):
         self.warnings.append(msg)
+
+    def step(self, label: str, latex: str, ref: str = ""):
+        """Record one worked calculation step as LaTeX (symbol = expr = subst = result)."""
+        self.formulas.append({"label": label, "latex": latex, "ref": ref})
 
 
 @dataclass
